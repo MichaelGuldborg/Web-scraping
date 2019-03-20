@@ -1,0 +1,9 @@
+
+
+# google credentials
+credentials.json
+token.pickle
+
+# output files
+output/*
+.csv
