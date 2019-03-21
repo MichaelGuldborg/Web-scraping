@@ -38,14 +38,30 @@ def main():
                                      timeMin=time_min_iso, timeMax=time_max_iso,
                                      singleEvents=True).execute()
 
+    print("Parsing event response")
     calendar_name = response['summary']
     events = response['items']
-    filename = "output/{}-{:02d}-{:02d}".format(str(calendar_name).lower(), time_min.month, time_max.month)
-    csv_filename = filename + ".csv"
-    pdf_filename = filename + ".pdf"
+    parsed_events = parse_response(events)
 
-    print("Parsing event response")
+    print("Writing data to file")
+    filename = "output/{}-{:02d}-{:02d}".format(str(calendar_name).lower(), time_min.month, time_max.month)
+    headers = [
+        name,
+        'Fra: {}'.format(time_min.strftime("%d-%m-%Y")),
+        'Til: {}'.format(time_max.strftime("%d-%m-%Y")),
+    ]
+
+    # csv_filename = filename + ".csv"
+    # write_csv(csv_filename, parsed_events)
+    # csv_file = open(csv_filename, "r")
+    # data = list(csv.reader(csv_file, delimiter=';'))
+    pdf_filename = filename + ".pdf"
+    write_pdf(pdf_filename, parsed_events, headers=headers)
+
+
+def parse_response(events):
     parsed_events = [['Dato', 'Start', 'Slut', 'Varighed']]
+
     total_duration = None
     for event in events:
         summary = event['summary']
@@ -57,9 +73,9 @@ def main():
         end_time = "{:02d}:{:02d}".format(end.hour, end.minute)
         duration = end - start
 
-        total_duration = total_duration + duration if total_duration else duration
         parsed_events.append([date.strftime("%d-%m-%Y"), start_time, end_time, str(duration)])
-        print("{}, {}, {}, {}, {}".format(summary, date, start_time, end_time, duration))
+        total_duration = total_duration + duration if total_duration else duration
+        # print("{}, {}, {}, {}, {}".format(summary, date, start_time, end_time, duration))
 
     # calculate total duration
     days = total_duration.days
@@ -70,16 +86,7 @@ def main():
     hours_total = days * 24 + hours + minutes / 60
     parsed_events.append(["", "", "Total", str(hours_total)])
     print("hours_total: {}\n".format(hours_total))
-
-    headers = [
-        name,
-        'Fra: {}'.format(time_min.strftime("%d-%m-%Y")),
-        'Til: {}'.format(time_max.strftime("%d-%m-%Y")),
-    ]
-    # write_csv(csv_filename, parsed_events)
-    # csv_file = open(csv_filename, "r")
-    # data = list(csv.reader(csv_file, delimiter=';'))
-    write_pdf(pdf_filename, parsed_events, headers=headers)
+    return parsed_events
 
 
 def write_csv(filename, data, headers=None):
