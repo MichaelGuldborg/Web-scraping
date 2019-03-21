@@ -1,5 +1,7 @@
 
 
+.idea/*
+
 # google credentials
 credentials.json
 token.pickle

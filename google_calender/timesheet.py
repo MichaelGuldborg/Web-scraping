@@ -1,85 +1,54 @@
 from __future__ import print_function
 
 import csv
-import os.path
-import pickle
 from datetime import datetime
 
 from dateutil import parser
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import *
 
-# If modifying these scopes, delete the file token.pickle.
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+from credentials import fetch_credentials
 
-
-def get_creds():
-    creds = None
-    # The file token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
-            creds = flow.run_local_server()
-        # Save the credentials for the next run
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
-
-    return creds
+calendar_id_sidecourt = "5drdnd66pka1v7m5n2o7usn1n0@group.calendar.google.com"
+calendar_id_minejendom = "qmb4l18ht68lehg6mgrdv9o2b8@group.calendar.google.com"
 
 
 def main():
-    """Shows basic usage of the Google Calendar API.
-    Prints the start and name of the next 10 events on the user's calendar.
-    """
+    """ Fetch google calendar events and write timestamps to csv and pdf """
 
     print('Fetching credentials')
-    creds = get_creds()
+    creds = fetch_credentials()
     service = build('calendar', 'v3', credentials=creds)
 
-    name_default = "Michael Guldborg"
+    # Define script configs
+    name = "Michael Guldborg Consulting"
+    calendar_id = calendar_id_minejendom
+    time_min = datetime(2019, 2, 20, 00, 00, 00)
+    time_max = datetime(2019, 3, 19, 23, 59, 00)
+    time_min_iso = time_min.isoformat() + 'Z'  # 'Z' indicates UTC time
+    time_max_iso = time_max.isoformat() + 'Z'  # 'Z' indicates UTC time
 
-    calendar_id_work = "5drdnd66pka1v7m5n2o7usn1n0@group.calendar.google.com"
-    calendar_id_sidecourt = "qmb4l18ht68lehg6mgrdv9o2b8@group.calendar.google.com"
-    calender_id_default = calendar_id_sidecourt
+    print("Fetching events from calendar:\n{}".format(calendar_id))
+    print("From:\t{}\nTo:  \t{}\n".format(time_min_iso, time_max_iso))
+    response = service.events().list(calendarId=calendar_id, orderBy='startTime',
+                                     timeMin=time_min_iso, timeMax=time_max_iso,
+                                     singleEvents=True).execute()
 
-    # Define Caleder API request params
-    name = name_default  # input("Name:") or name_default
-    calendarId = calender_id_default  # input("CalendarId:") or calender_id_default
-    timeMin = datetime(2019, 2, 19, 00, 00, 00).isoformat() + 'Z'  # 'Z' indicates UTC time
-    timeMax = datetime(2019, 3, 20, 23, 59, 00).isoformat() + 'Z'  # 'Z' indicates UTC time
-    # now = datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
+    calendar_name = response['summary']
+    events = response['items']
+    filename = "output/{}-{:02d}-{:02d}".format(str(calendar_name).lower(), time_min.month, time_max.month)
+    csv_filename = filename + ".csv"
+    pdf_filename = filename + ".pdf"
 
-    print("\nHello, {}".format(name))
-    print("You picked the calender with id:\n{}\n".format(calendarId))
-
-    # Call the Calendar API
-    events_response = service.events().list(calendarId=calendarId, orderBy='startTime', timeMin=timeMin,
-                                            timeMax=timeMax, singleEvents=True).execute()
-    print("Fetched events from: \"{}\"".format(events_response['summary']))
-    print("From:\t{}\nTo:  \t{}\n".format(timeMin, timeMax))
-
-    output_file = open('time_sheet.csv', mode='w', newline='')  # to prevent csv writer making double newline
-    # output_file.write("\"sep=,\"\n") # tell excel to parse with ',' as separator
-    output_file.write("{}\n".format(name))
-
-    writer = csv.writer(output_file, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    events = events_response['items']
-    duration_total = None
+    print("Parsing event response")
+    parsed_events = [['Dato', 'Start', 'Slut', 'Varighed']]
+    total_duration = None
     for event in events:
         summary = event['summary']
-        #        if "MinEjendom".lower() not in summary.lower():
-        #            continue
-
         start = parser.parse(event['start']['dateTime'])
         end = parser.parse(event['end']['dateTime'])
 
@@ -88,18 +57,95 @@ def main():
         end_time = "{:02d}:{:02d}".format(end.hour, end.minute)
         duration = end - start
 
-        duration_total = duration_total + duration if duration_total else duration
+        total_duration = total_duration + duration if total_duration else duration
+        parsed_events.append([date.strftime("%d-%m-%Y"), start_time, end_time, str(duration)])
         print("{}, {}, {}, {}, {}".format(summary, date, start_time, end_time, duration))
-        writer.writerow([date, start_time, end_time, duration])
 
-    days = duration_total.days
-    hours, remainder = divmod(duration_total.seconds, 3600)
+    # calculate total duration
+    days = total_duration.days
+    hours, remainder = divmod(total_duration.seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     print("days: {}, hours: {}, minutes: {}".format(days, hours, minutes))
 
     hours_total = days * 24 + hours + minutes / 60
-    print("hours_total: {}".format(hours_total))
-    writer.writerow(["", "", "", "Total", hours_total])
+    parsed_events.append(["", "", "Total", str(hours_total)])
+    print("hours_total: {}\n".format(hours_total))
+
+    headers = [
+        name,
+        'Fra: {}'.format(time_min.strftime("%d-%m-%Y")),
+        'Til: {}'.format(time_max.strftime("%d-%m-%Y")),
+    ]
+    # write_csv(csv_filename, parsed_events)
+    # csv_file = open(csv_filename, "r")
+    # data = list(csv.reader(csv_file, delimiter=';'))
+    write_pdf(pdf_filename, parsed_events, headers=headers)
+
+
+def write_csv(filename, data, headers=None):
+    print("Writing to file: {}".format(filename))
+    file = open(filename, mode='w', newline='')  # to prevent csv writer making double newline
+    writer = csv.writer(file, delimiter=';')
+    if headers:
+        for header in headers:
+            writer.writerow([header, "", "", ""])
+    writer.writerows(data)
+    file.close()
+
+
+def write_pdf(filename, data, headers=None):
+    print("Writing to file: {}".format(filename))
+    elements = []
+
+    # PDF Text
+    # PDF Text - Styles
+    styles = getSampleStyleSheet()
+    styleNormal = styles['Normal']
+
+    # PDF Header
+    for header in headers:
+        elements.append(Paragraph(header, styleNormal))
+    if headers: elements.append(Spacer(3 * cm, 0.5 * cm))
+
+    # PDF Table
+    # PDF Table - Styles
+    # [(start_column, start_row), (end_column, end_row)]
+    all_cells = [(0, 0), (-1, -1)]
+    header_cells = [(0, 0), (-1, 0)]
+    table_style = TableStyle([
+        ('VALIGN', all_cells[0], all_cells[1], 'TOP'),
+        ('ALIGN', all_cells[0], all_cells[1], 'LEFT'),
+        ('LINEBELOW', header_cells[0], header_cells[1], 1, colors.black),
+    ])
+
+    # PDF Table - Column Widths
+    col_widths = [
+        6 * cm,  # Column 0
+        2 * cm,  # Column 1
+        2 * cm,  # Column 2
+        2 * cm,  # Column 3
+    ]
+
+    # PDF Table
+    for index, row in enumerate(data):
+        for col, val in enumerate(row):
+            data[index][col] = Paragraph(val, styles['Normal'])
+
+    # Add table to elements
+    t = Table(data, colWidths=col_widths, hAlign='LEFT')
+    t.setStyle(table_style)
+    elements.append(t)
+
+    # Generate PDF
+    archivo_pdf = SimpleDocTemplate(
+        filename,
+        pagesize=letter,
+        rightMargin=40,
+        leftMargin=40,
+        topMargin=40,
+        bottomMargin=28)
+    archivo_pdf.build(elements)
+    print('PDF Generated!')
 
 
 if __name__ == '__main__':
