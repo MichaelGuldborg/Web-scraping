@@ -1,26 +1,24 @@
 import smtplib
 
-SERVER = "localhost"
 
-FROM = "sender@example.com"
-TO = ["mgivskud9@gmail.com"]  # must be a list
+def send_email(SUBJECT, TEXT):
+    SERVER = "localhost"
+    FROM = "sender@example.com"
+    TO = ["mgivskud9@gmail.com"]  # must be a list
 
-SUBJECT = "Hello!"
+    # Prepare actual message
 
-TEXT = "This message was sent with Python's smtplib."
+    message = """\
+    From: %s
+    To: %s
+    Subject: %s
+    
+    %s
+    """.format(FROM, ", ".join(TO), SUBJECT, TEXT)
 
-# Prepare actual message
+    # Send the mail
 
-message = """\
-From: %s
-To: %s
-Subject: %s
-
-%s
-""".format(FROM, ", ".join(TO), SUBJECT, TEXT)
-
-# Send the mail
-
-server = smtplib.SMTP(SERVER)
-server.sendmail(FROM, TO, message)
-server.quit()
+    server = smtplib.SMTP(SERVER)
+    server.sendmail(FROM, TO, message)
+    server.quit()
+    print("Successfully sent notification mail")
